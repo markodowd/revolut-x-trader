@@ -23,9 +23,23 @@ pub fn send_get(
 
     println!("Status: {}", response.status());
     let body: serde_json::Value = response.json()?;
-    let pretty = serde_json::to_string_pretty(&body)?;
-    println!("{}", pretty);
-    fs::write("output.txt", &pretty)?;
+
+    let output = if path == "/api/1.0/balances" {
+        let filtered: Vec<&serde_json::Value> = body
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter(|item| matches!(item["currency"].as_str(), Some("USD") | Some("LTC")))
+                    .collect()
+            })
+            .unwrap_or_default();
+        serde_json::to_string_pretty(&filtered)?
+    } else {
+        serde_json::to_string_pretty(&body)?
+    };
+
+    println!("{}", output);
+    fs::write("output.txt", &output)?;
 
     Ok(())
 }
