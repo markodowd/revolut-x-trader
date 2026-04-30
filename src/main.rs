@@ -2,6 +2,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signer, SigningKey, pkcs8::DecodePrivateKey as _};
 use std::env;
 use std::fs;
+use std::io::{self, BufRead, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn generate_signature(
@@ -24,6 +25,27 @@ fn generate_signature(
     (timestamp, b64_signature)
 }
 
+fn select_path() -> &'static str {
+    loop {
+        println!("1) GET /api/1.0/balances");
+        println!("2) GET /api/1.0/configuration/pairs");
+        print!("Choice: ");
+        io::stdout().flush().expect("flush failed");
+
+        let mut input = String::new();
+        io::stdin()
+            .lock()
+            .read_line(&mut input)
+            .expect("read failed");
+
+        match input.trim() {
+            "1" => return "/api/1.0/balances",
+            "2" => return "/api/1.0/configuration/pairs",
+            _ => println!("Invalid choice, try again."),
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv()?;
     let api_key = env::var("REVOLUT_X_API_KEY")?;
@@ -37,9 +59,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let der = STANDARD.decode(der_b64)?;
     let signing_key = SigningKey::from_pkcs8_der(&der)?;
 
+    let path = select_path();
+
     let method = "GET";
-    // Path must start from /api — this is what gets signed AND appended to base_url
-    let path = "/api/1.0/balances";
     let query = "";
     let body = "";
 
