@@ -9,7 +9,7 @@ pub fn select_action() -> Action {
     loop {
         println!("1) GET /balances");
         println!("2) GET /configuration/pairs");
-        println!("3) BUY LTC-USD (limit order)");
+        println!("3) POST /orders (BUY LTC-USD limit)");
         print!("Choice: ");
         io::stdout().flush().expect("flush failed");
 
