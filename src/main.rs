@@ -25,6 +25,33 @@ fn generate_signature(
     (timestamp, b64_signature)
 }
 
+fn init() -> Result<(String, SigningKey), Box<dyn std::error::Error>> {
+    dotenvy::dotenv()?;
+    let base_url = env::var("REVOLUT_X_BASE_URL")?;
+
+    let pem_content = fs::read_to_string("keys/private.pem")?;
+    let der_b64: String = pem_content
+        .lines()
+        .filter(|l| !l.starts_with("-----"))
+        .collect();
+    let der = STANDARD.decode(der_b64)?;
+    let signing_key = SigningKey::from_pkcs8_der(&der)?;
+
+    Ok((base_url, signing_key))
+}
+
+fn setup_request(
+    signing_key: &SigningKey,
+    method: &str,
+    path: &str,
+    query: &str,
+    body: &str,
+) -> Result<(String, u128, String), Box<dyn std::error::Error>> {
+    let api_key = env::var("REVOLUT_X_API_KEY")?;
+    let (timestamp, signature) = generate_signature(signing_key, method, path, query, body);
+    Ok((api_key, timestamp, signature))
+}
+
 fn select_path() -> &'static str {
     loop {
         println!("1) GET /api/1.0/balances");
@@ -47,17 +74,7 @@ fn select_path() -> &'static str {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv()?;
-    let api_key = env::var("REVOLUT_X_API_KEY")?;
-    let base_url = env::var("REVOLUT_X_BASE_URL")?;
-
-    let pem_content = fs::read_to_string("keys/private.pem")?;
-    let der_b64: String = pem_content
-        .lines()
-        .filter(|l| !l.starts_with("-----"))
-        .collect();
-    let der = STANDARD.decode(der_b64)?;
-    let signing_key = SigningKey::from_pkcs8_der(&der)?;
+    let (base_url, signing_key) = init()?;
 
     let path = select_path();
 
@@ -65,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let query = "";
     let body = "";
 
-    let (timestamp, signature) = generate_signature(&signing_key, method, path, query, body);
+    let (api_key, timestamp, signature) = setup_request(&signing_key, method, path, query, body)?;
 
     let url = format!("{}{}", base_url.trim_end_matches('/'), path);
 
@@ -81,7 +98,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send()?;
 
     println!("Status: {}", response.status());
-    println!("{}", response.text()?);
+    let body: serde_json::Value = response.json()?;
+    let pretty = serde_json::to_string_pretty(&body)?;
+    println!("{}", pretty);
+    fs::write("output.txt", &pretty)?;
 
     Ok(())
 }

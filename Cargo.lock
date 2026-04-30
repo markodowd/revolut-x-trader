@@ -776,6 +776,7 @@ dependencies = [
  "dotenvy",
  "ed25519-dalek",
  "reqwest",
+ "serde_json",
 ]
 
 [[package]]
