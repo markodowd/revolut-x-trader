@@ -1,5 +1,5 @@
 [package]
-name = "revout-trading"
+name = "revolut-trading"
 version = "0.1.0"
 edition = "2024"
 
