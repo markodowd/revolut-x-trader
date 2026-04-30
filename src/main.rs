@@ -1,5 +1,5 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::{Signer, SigningKey, pkcs8::DecodePrivateKey as _};
 use std::env;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,18 +10,14 @@ fn generate_signature(
     path: &str,
     query: &str,
     body: &str,
-) -> (String, String) {
-    // 1. Generate Unix timestamp in milliseconds
+) -> (u128, String) {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
-        .as_millis()
-        .to_string();
+        .as_millis();
 
-    // 2. Construct the message exactly as the API expects
     let message = format!("{}{}{}{}{}", timestamp, method, path, query, body);
 
-    // 3. Sign and Base64 encode
     let signature = private_key.sign(message.as_bytes());
     let b64_signature = STANDARD.encode(signature.to_bytes());
 
@@ -31,25 +27,39 @@ fn generate_signature(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv()?;
     let api_key = env::var("REVOLUT_X_API_KEY")?;
+    let base_url = env::var("REVOLUT_X_BASE_URL")?;
 
-    // Load your key (do this once, not for every request)
     let pem_content = fs::read_to_string("keys/private.pem")?;
-    let (_, doc) = pkcs8::SecretDocument::from_pem(&pem_content)?;
-    let key_bytes: &[u8; 32] = doc.as_bytes()[..32].try_into()?;
-    let signing_key = SigningKey::from_bytes(key_bytes);
+    let der_b64: String = pem_content
+        .lines()
+        .filter(|l| !l.starts_with("-----"))
+        .collect();
+    let der = STANDARD.decode(der_b64)?;
+    let signing_key = SigningKey::from_pkcs8_der(&der)?;
 
-    // Example Usage
-    let (ts, sig) = generate_signature(
-        &signing_key,
-        "GET",
-        "/api/1.0/orders/active",
-        "status=open&limit=10",
-        "",
-    );
+    let method = "GET";
+    // Path must start from /api — this is what gets signed AND appended to base_url
+    let path = "/api/1.0/balances";
+    let query = "";
+    let body = "";
 
-    println!("X-Revx-Timestamp: {}", ts);
-    println!("X-Revx-Signature: {}", sig);
-    println!("X-Revx-Api-Key: {}", api_key);
+    let (timestamp, signature) = generate_signature(&signing_key, method, path, query, body);
+
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+
+    println!("{} {}", method, url);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .header("X-Revx-API-Key", &api_key)
+        .header("X-Revx-Timestamp", timestamp.to_string())
+        .header("X-Revx-Signature", &signature)
+        .send()?;
+
+    println!("Status: {}", response.status());
+    println!("{}", response.text()?);
 
     Ok(())
 }
