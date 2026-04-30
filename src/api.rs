@@ -56,9 +56,10 @@ pub fn send_get(
     Ok(())
 }
 
-pub fn get_usd_available(
+pub fn get_available(
     base_url: &str,
     signing_key: &SigningKey,
+    currency: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let path = "/balances";
     let sign_path = format!("{}{}", url_path(base_url), path);
@@ -75,9 +76,9 @@ pub fn get_usd_available(
         .json()?;
 
     body.as_array()
-        .and_then(|arr| arr.iter().find(|item| item["currency"] == "USD"))
-        .and_then(|usd| usd["available"].as_str().map(|s| s.to_string()))
-        .ok_or_else(|| "USD available balance not found".into())
+        .and_then(|arr| arr.iter().find(|item| item["currency"] == currency))
+        .and_then(|entry| entry["available"].as_str().map(|s| s.to_string()))
+        .ok_or_else(|| format!("{} available balance not found", currency).into())
 }
 
 // --- Place Order ---
@@ -97,7 +98,10 @@ struct OrderConfiguration {
 
 #[derive(Serialize)]
 struct LimitConfig {
-    quote_size: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quote_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_size: Option<String>,
     price: String,
     execution_instructions: Vec<String>,
 }
@@ -117,22 +121,33 @@ struct OrderData {
 pub fn place_order(
     base_url: &str,
     signing_key: &SigningKey,
-    quote_size: &str,
+    side: &str,
+    size: &str,
     price: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let path = "/orders";
 
+    let limit = if side == "buy" {
+        LimitConfig {
+            quote_size: Some(size.to_string()),
+            base_size: None,
+            price: price.to_string(),
+            execution_instructions: vec!["allow_taker".to_string()],
+        }
+    } else {
+        LimitConfig {
+            quote_size: None,
+            base_size: Some(size.to_string()),
+            price: price.to_string(),
+            execution_instructions: vec!["allow_taker".to_string()],
+        }
+    };
+
     let order = PlaceOrderRequest {
         client_order_id: Uuid::new_v4().to_string(),
         symbol: "LTC-USD".to_string(),
-        side: "buy".to_string(),
-        order_configuration: OrderConfiguration {
-            limit: LimitConfig {
-                quote_size: quote_size.to_string(),
-                price: price.to_string(),
-                execution_instructions: vec!["allow_taker".to_string()],
-            },
-        },
+        side: side.to_string(),
+        order_configuration: OrderConfiguration { limit },
     };
 
     let body = serde_json::to_string(&order)?;

@@ -3,6 +3,7 @@ use std::io::{self, BufRead, Write};
 pub enum Action {
     Get(&'static str),
     PlaceOrder,
+    PlaceSell,
 }
 
 pub fn select_action() -> Action {
@@ -10,6 +11,7 @@ pub fn select_action() -> Action {
         println!("1) GET /balances");
         println!("2) GET /configuration/pairs");
         println!("3) POST /orders (BUY LTC-USD limit)");
+        println!("4) POST /orders (SELL LTC-USD limit)");
         print!("Choice: ");
         io::stdout().flush().expect("flush failed");
 
@@ -23,13 +25,19 @@ pub fn select_action() -> Action {
             "1" => return Action::Get("/balances"),
             "2" => return Action::Get("/configuration/pairs"),
             "3" => return Action::PlaceOrder,
+            "4" => return Action::PlaceSell,
             _ => println!("Invalid choice, try again."),
         }
     }
 }
 
-pub fn prompt_price(available: &str) -> String {
+pub fn prompt_buy_price(available: &str) -> String {
     println!("Spending {} USD", available);
+    prompt("Limit price (USD per LTC): ")
+}
+
+pub fn prompt_sell_price(available: &str) -> String {
+    println!("Selling {} LTC", available);
     prompt("Limit price (USD per LTC): ")
 }
 
