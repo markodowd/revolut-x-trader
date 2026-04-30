@@ -56,6 +56,30 @@ pub fn send_get(
     Ok(())
 }
 
+pub fn get_usd_available(
+    base_url: &str,
+    signing_key: &SigningKey,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let path = "/balances";
+    let sign_path = format!("{}{}", url_path(base_url), path);
+    let (api_key, timestamp, signature) = sign_request(signing_key, "GET", &sign_path, "", "")?;
+
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+    let body: serde_json::Value = reqwest::blocking::Client::new()
+        .get(&url)
+        .header("Accept", "application/json")
+        .header("X-Revx-API-Key", &api_key)
+        .header("X-Revx-Timestamp", timestamp.to_string())
+        .header("X-Revx-Signature", &signature)
+        .send()?
+        .json()?;
+
+    body.as_array()
+        .and_then(|arr| arr.iter().find(|item| item["currency"] == "USD"))
+        .and_then(|usd| usd["available"].as_str().map(|s| s.to_string()))
+        .ok_or_else(|| "USD available balance not found".into())
+}
+
 // --- Place Order ---
 
 #[derive(Serialize)]

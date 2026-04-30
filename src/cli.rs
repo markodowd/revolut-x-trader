@@ -2,7 +2,7 @@ use std::io::{self, BufRead, Write};
 
 pub enum Action {
     Get(&'static str),
-    PlaceOrder { quote_size: String, price: String },
+    PlaceOrder,
 }
 
 pub fn select_action() -> Action {
@@ -22,16 +22,15 @@ pub fn select_action() -> Action {
         match input.trim() {
             "1" => return Action::Get("/balances"),
             "2" => return Action::Get("/configuration/pairs"),
-            "3" => return prompt_buy_order(),
+            "3" => return Action::PlaceOrder,
             _ => println!("Invalid choice, try again."),
         }
     }
 }
 
-fn prompt_buy_order() -> Action {
-    let quote_size = prompt("USD amount to spend (quote_size): ");
-    let price = prompt("Limit price (USD per LTC): ");
-    Action::PlaceOrder { quote_size, price }
+pub fn prompt_price(available: &str) -> String {
+    println!("Spending {} USD", available);
+    prompt("Limit price (USD per LTC): ")
 }
 
 fn prompt(label: &str) -> String {
