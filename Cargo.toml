@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ed25519-dalek = "2.1"
+base64 = "0.22"
+pkcs8 = { version = "0.10", features = ["std", "pem"] }
+dotenvy = "0.15"
