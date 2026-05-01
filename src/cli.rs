@@ -4,6 +4,7 @@ pub enum Action {
     Get(&'static str),
     PlaceOrder,
     PlaceSell,
+    CancelAllOrders,
 }
 
 pub fn select_action() -> Action {
@@ -12,6 +13,8 @@ pub fn select_action() -> Action {
         println!("2) GET /configuration/pairs");
         println!("3) POST /orders (BUY LTC-USD limit)");
         println!("4) POST /orders (SELL LTC-USD limit)");
+        println!("5) GET /orders/active");
+        println!("6) DELETE /orders (cancel all active)");
         print!("Choice: ");
         io::stdout().flush().expect("flush failed");
 
@@ -26,6 +29,8 @@ pub fn select_action() -> Action {
             "2" => return Action::Get("/configuration/pairs"),
             "3" => return Action::PlaceOrder,
             "4" => return Action::PlaceSell,
+            "5" => return Action::Get("/orders/active"),
+            "6" => return Action::CancelAllOrders,
             _ => println!("Invalid choice, try again."),
         }
     }

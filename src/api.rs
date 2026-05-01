@@ -81,6 +81,37 @@ pub fn get_available(
         .ok_or_else(|| format!("{} available balance not found", currency).into())
 }
 
+pub fn cancel_all_orders(
+    base_url: &str,
+    signing_key: &SigningKey,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = "/orders";
+    let sign_path = format!("{}{}", url_path(base_url), path);
+    let (api_key, timestamp, signature) = sign_request(signing_key, "DELETE", &sign_path, "", "")?;
+
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+    println!("DELETE {}", url);
+
+    let response = reqwest::blocking::Client::new()
+        .delete(&url)
+        .header("X-Revx-API-Key", &api_key)
+        .header("X-Revx-Timestamp", timestamp.to_string())
+        .header("X-Revx-Signature", &signature)
+        .send()?;
+
+    let status = response.status();
+    println!("Status: {}", status);
+
+    if !status.is_success() {
+        let body = response.text().unwrap_or_else(|_| "<unreadable body>".to_string());
+        println!("Error body: {}", body);
+        return Err(format!("Cancel all orders failed with status {}", status).into());
+    }
+
+    println!("All active orders cancelled.");
+    Ok(())
+}
+
 // --- Place Order ---
 
 #[derive(Serialize)]

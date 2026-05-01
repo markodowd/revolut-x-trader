@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let price = cli::prompt_sell_price(&size);
             api::place_order(&base_url, &signing_key, "sell", &size, &price)?
         }
+        cli::Action::CancelAllOrders => api::cancel_all_orders(&base_url, &signing_key)?,
     }
 
     Ok(())
