@@ -149,13 +149,42 @@ struct OrderData {
     state: String,
 }
 
+pub fn get_active_order_ids(
+    base_url: &str,
+    signing_key: &SigningKey,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let path = "/orders/active";
+    let sign_path = format!("{}{}", url_path(base_url), path);
+    let (api_key, timestamp, signature) = sign_request(signing_key, "GET", &sign_path, "", "")?;
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+    let body: serde_json::Value = reqwest::blocking::Client::new()
+        .get(&url)
+        .header("Accept", "application/json")
+        .header("X-Revx-API-Key", &api_key)
+        .header("X-Revx-Timestamp", timestamp.to_string())
+        .header("X-Revx-Signature", &signature)
+        .send()?
+        .json()?;
+
+    let orders = body.as_array()
+        .or_else(|| body.get("data").and_then(|d| d.as_array()));
+
+    Ok(orders
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item["client_order_id"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
 pub fn place_order(
     base_url: &str,
     signing_key: &SigningKey,
     side: &str,
     size: &str,
     price: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>> {
     let path = "/orders";
 
     let limit = if side == "buy" {
@@ -212,5 +241,5 @@ pub fn place_order(
     println!("client_order_id: {}", order_response.data.client_order_id);
     println!("state:           {}", order_response.data.state);
 
-    Ok(())
+    Ok(order_response.data.client_order_id)
 }

@@ -5,6 +5,7 @@ pub enum Action {
     PlaceOrder,
     PlaceSell,
     CancelAllOrders,
+    Bot { buy_price: String, sell_price: String },
 }
 
 pub fn select_action() -> Action {
@@ -15,6 +16,7 @@ pub fn select_action() -> Action {
         println!("4) POST /orders (SELL LTC-USD limit)");
         println!("5) GET /orders/active");
         println!("6) DELETE /orders (cancel all active)");
+        println!("7) AUTO bot (buy → sell loop, hourly checks)");
         print!("Choice: ");
         io::stdout().flush().expect("flush failed");
 
@@ -31,9 +33,19 @@ pub fn select_action() -> Action {
             "4" => return Action::PlaceSell,
             "5" => return Action::Get("/orders/active"),
             "6" => return Action::CancelAllOrders,
+            "7" => {
+                let (buy_price, sell_price) = prompt_bot_prices();
+                return Action::Bot { buy_price, sell_price };
+            }
             _ => println!("Invalid choice, try again."),
         }
     }
+}
+
+pub fn prompt_bot_prices() -> (String, String) {
+    let buy_price = prompt("Bot buy price (USD per LTC): ");
+    let sell_price = prompt("Bot sell price (USD per LTC): ");
+    (buy_price, sell_price)
 }
 
 pub fn prompt_buy_price(available: &str) -> String {
