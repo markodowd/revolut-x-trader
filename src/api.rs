@@ -14,28 +14,61 @@ fn url_path(base_url: &str) -> String {
         .unwrap_or_default()
 }
 
+fn send_signed(
+    base_url: &str,
+    signing_key: &SigningKey,
+    method: &str,
+    path: &str,
+    body: &str,
+) -> Result<reqwest::blocking::Response, Box<dyn std::error::Error>> {
+    let sign_path = format!("{}{}", url_path(base_url), path);
+    let (api_key, timestamp, signature) = sign_request(signing_key, method, &sign_path, "", body)?;
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
+
+    let client = reqwest::blocking::Client::new();
+    let mut builder = match method {
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        "DELETE" => client.delete(&url),
+        _ => return Err(format!("unsupported HTTP method: {}", method).into()),
+    }
+    .header("Accept", "application/json")
+    .header("X-Revx-API-Key", &api_key)
+    .header("X-Revx-Timestamp", timestamp.to_string())
+    .header("X-Revx-Signature", &signature);
+
+    if !body.is_empty() {
+        builder = builder
+            .header("Content-Type", "application/json")
+            .body(body.to_string());
+    }
+
+    Ok(builder.send()?)
+}
+
+fn require_success(
+    response: reqwest::blocking::Response,
+    context: &str,
+) -> Result<reqwest::blocking::Response, Box<dyn std::error::Error>> {
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().unwrap_or_else(|_| "<unreadable body>".to_string());
+        println!("Error body: {}", body);
+        return Err(format!("{} failed with status {}", context, status).into());
+    }
+    Ok(response)
+}
+
 pub fn send_get(
     base_url: &str,
     signing_key: &SigningKey,
     path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let sign_path = format!("{}{}", url_path(base_url), path);
-    let (api_key, timestamp, signature) = sign_request(signing_key, "GET", &sign_path, "", "")?;
-
-    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-    println!("GET {}", url);
-
-    let response = reqwest::blocking::Client::new()
-        .get(&url)
-        .header("Accept", "application/json")
-        .header("X-Revx-API-Key", &api_key)
-        .header("X-Revx-Timestamp", timestamp.to_string())
-        .header("X-Revx-Signature", &signature)
-        .send()?;
-
+    println!("GET {}{}", base_url.trim_end_matches('/'), path);
+    let response = send_signed(base_url, signing_key, "GET", path, "")?;
     println!("Status: {}", response.status());
-    let body: serde_json::Value = response.json()?;
 
+    let body: serde_json::Value = response.json()?;
     let output = if path == "/balances" {
         let filtered: Vec<&serde_json::Value> = body
             .as_array()
@@ -52,7 +85,6 @@ pub fn send_get(
 
     println!("{}", output);
     fs::write("output.txt", &output)?;
-
     Ok(())
 }
 
@@ -61,19 +93,7 @@ pub fn get_available(
     signing_key: &SigningKey,
     currency: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let path = "/balances";
-    let sign_path = format!("{}{}", url_path(base_url), path);
-    let (api_key, timestamp, signature) = sign_request(signing_key, "GET", &sign_path, "", "")?;
-
-    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-    let body: serde_json::Value = reqwest::blocking::Client::new()
-        .get(&url)
-        .header("Accept", "application/json")
-        .header("X-Revx-API-Key", &api_key)
-        .header("X-Revx-Timestamp", timestamp.to_string())
-        .header("X-Revx-Signature", &signature)
-        .send()?
-        .json()?;
+    let body: serde_json::Value = send_signed(base_url, signing_key, "GET", "/balances", "")?.json()?;
 
     body.as_array()
         .and_then(|arr| arr.iter().find(|item| item["currency"] == currency))
@@ -85,29 +105,10 @@ pub fn cancel_all_orders(
     base_url: &str,
     signing_key: &SigningKey,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = "/orders";
-    let sign_path = format!("{}{}", url_path(base_url), path);
-    let (api_key, timestamp, signature) = sign_request(signing_key, "DELETE", &sign_path, "", "")?;
-
-    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-    println!("DELETE {}", url);
-
-    let response = reqwest::blocking::Client::new()
-        .delete(&url)
-        .header("X-Revx-API-Key", &api_key)
-        .header("X-Revx-Timestamp", timestamp.to_string())
-        .header("X-Revx-Signature", &signature)
-        .send()?;
-
-    let status = response.status();
-    println!("Status: {}", status);
-
-    if !status.is_success() {
-        let body = response.text().unwrap_or_else(|_| "<unreadable body>".to_string());
-        println!("Error body: {}", body);
-        return Err(format!("Cancel all orders failed with status {}", status).into());
-    }
-
+    println!("DELETE {}/orders", base_url.trim_end_matches('/'));
+    let response = send_signed(base_url, signing_key, "DELETE", "/orders", "")?;
+    println!("Status: {}", response.status());
+    require_success(response, "Cancel all orders")?;
     println!("All active orders cancelled.");
     Ok(())
 }
@@ -153,18 +154,7 @@ pub fn get_active_order_ids(
     base_url: &str,
     signing_key: &SigningKey,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let path = "/orders/active";
-    let sign_path = format!("{}{}", url_path(base_url), path);
-    let (api_key, timestamp, signature) = sign_request(signing_key, "GET", &sign_path, "", "")?;
-    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-    let body: serde_json::Value = reqwest::blocking::Client::new()
-        .get(&url)
-        .header("Accept", "application/json")
-        .header("X-Revx-API-Key", &api_key)
-        .header("X-Revx-Timestamp", timestamp.to_string())
-        .header("X-Revx-Signature", &signature)
-        .send()?
-        .json()?;
+    let body: serde_json::Value = send_signed(base_url, signing_key, "GET", "/orders/active", "")?.json()?;
 
     let orders = body.as_array()
         .or_else(|| body.get("data").and_then(|d| d.as_array()));
@@ -185,22 +175,11 @@ pub fn place_order(
     size: &str,
     price: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let path = "/orders";
-
-    let limit = if side == "buy" {
-        LimitConfig {
-            quote_size: Some(size.to_string()),
-            base_size: None,
-            price: price.to_string(),
-            execution_instructions: vec!["allow_taker".to_string()],
-        }
-    } else {
-        LimitConfig {
-            quote_size: None,
-            base_size: Some(size.to_string()),
-            price: price.to_string(),
-            execution_instructions: vec!["allow_taker".to_string()],
-        }
+    let limit = LimitConfig {
+        quote_size: (side == "buy").then(|| size.to_string()),
+        base_size: (side != "buy").then(|| size.to_string()),
+        price: price.to_string(),
+        execution_instructions: vec!["allow_taker".to_string()],
     };
 
     let order = PlaceOrderRequest {
@@ -211,31 +190,10 @@ pub fn place_order(
     };
 
     let body = serde_json::to_string(&order)?;
-    let sign_path = format!("{}{}", url_path(base_url), path);
-    let (api_key, timestamp, signature) = sign_request(signing_key, "POST", &sign_path, "", &body)?;
-
-    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
-    println!("POST {}", url);
-
-    let response = reqwest::blocking::Client::new()
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json")
-        .header("X-Revx-API-Key", &api_key)
-        .header("X-Revx-Timestamp", timestamp.to_string())
-        .header("X-Revx-Signature", &signature)
-        .body(body)
-        .send()?;
-
-    let status = response.status();
-    println!("Status: {}", status);
-
-    if !status.is_success() {
-        let body = response.text().unwrap_or_else(|_| "<unreadable body>".to_string());
-        println!("Error body: {}", body);
-        return Err(format!("Order request failed with status {}", status).into());
-    }
-
+    println!("POST {}/orders", base_url.trim_end_matches('/'));
+    let response = send_signed(base_url, signing_key, "POST", "/orders", &body)?;
+    println!("Status: {}", response.status());
+    let response = require_success(response, "Order request")?;
     let order_response: PlaceOrderResponse = response.json()?;
     println!("venue_order_id:  {}", order_response.data.venue_order_id);
     println!("client_order_id: {}", order_response.data.client_order_id);
