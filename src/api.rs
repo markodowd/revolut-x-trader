@@ -1,7 +1,6 @@
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use uuid::Uuid;
 
 use crate::auth::sign_request;
 
@@ -174,6 +173,7 @@ pub fn place_order(
     side: &str,
     size: &str,
     price: &str,
+    client_order_id: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let limit = LimitConfig {
         quote_size: (side == "buy").then(|| size.to_string()),
@@ -183,7 +183,7 @@ pub fn place_order(
     };
 
     let order = PlaceOrderRequest {
-        client_order_id: Uuid::new_v4().to_string(),
+        client_order_id: client_order_id.to_string(),
         symbol: "LTC-USD".to_string(),
         side: side.to_string(),
         order_configuration: OrderConfiguration { limit },
