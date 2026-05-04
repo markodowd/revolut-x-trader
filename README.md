@@ -30,8 +30,8 @@ The binary will be at `target/aarch64-unknown-linux-gnu/release/revolut-trading`
 ## Deploying to the Pi
 
 ```bash
-scp target/aarch64-unknown-linux-gnu/release/revolut-trading pi@<PI_IP>:~/
-scp -r keys .env pi@<PI_IP>:~/
+scp target/aarch64-unknown-linux-gnu/release/revolut-trading modowd@pi-revolut.local:~/
+scp -r keys .env modowd@pi-revolut.local:~/
 ```
 
 On the Pi:
